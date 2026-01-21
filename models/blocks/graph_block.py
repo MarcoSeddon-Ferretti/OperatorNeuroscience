@@ -80,7 +80,7 @@ class GraphFNOBlock(nn.Module):
         # Inverse Graph Fourier Transform
         x_out = torch.matmul(self.U, x_hat_new)  # (B, N, C)
 
-        # Feedforward nodewise mixing (residual)
-        x_out = x_out + self.ff(x_out)
+        # Skip connection + spectral output + feedforward
+        x_out = x + x_out + self.ff(x)
 
         return x_out
