@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+
+# Data files (large)
+*.pt
+*.npz
+*.npy
+
+# Output files
+*.gif
+*.png
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.iml
+
+# OS
+.DS_Store
+
+# Jupyter
+.ipynb_checkpoints/
