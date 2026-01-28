@@ -8,36 +8,23 @@ class GraphFNOBlock(nn.Module):
     """
     Graph Fourier Neural Operator block.
 
-    Performs spectral convolution using graph Laplacian eigenvectors.
+    Performs spectral convolution using truncated graph Laplacian eigenbasis.
+    Eigenbasis is passed in during forward() to avoid redundant storage.
     """
 
-    def __init__(self, graph_U, width, modes=None, device=None):
+    def __init__(self, modes, width):
         """
         Parameters
         ----------
-        graph_U : Tensor
-            Laplacian eigenvectors of shape (N, N)
+        modes : int
+            Number of spectral modes (truncated basis size)
         width : int
             Number of channels
-        modes : int or None
-            Number of spectral modes to use (all if None)
-        device : torch.device or None
-            Device to place tensors on
         """
         super().__init__()
-        if device is None:
-            device = graph_U.device
 
-        self.U = graph_U.to(device)
-        self.U_t = graph_U.T.to(device)
-
-        self.N = graph_U.shape[0]
-        self.width = width
-
-        # Truncate number of spectral modes if needed
-        if modes is None:
-            modes = self.N
         self.modes = modes
+        self.width = width
 
         # Learnable spectral weights
         self.weight = nn.Parameter(torch.randn(modes, width, width) * 0.02)
@@ -49,36 +36,30 @@ class GraphFNOBlock(nn.Module):
             nn.Linear(width, width),
         )
 
-    def forward(self, x):
+    def forward(self, x, U_k):
         """
         Parameters
         ----------
         x : Tensor
             Input of shape (B, N, width)
+        U_k : Tensor
+            Truncated eigenbasis of shape (N, modes)
 
         Returns
         -------
         Tensor
             Output of shape (B, N, width)
         """
-        B, N, C = x.shape
-        assert N == self.N
-
-        # Graph Fourier Transform
-        x_hat = torch.matmul(self.U_t, x)  # (B, N, C)
-
-        # Truncate to low modes
-        x_hat_low = x_hat[:, : self.modes, :]  # (B, modes, C)
+        # Graph Fourier Transform (truncated)
+        # U_k.T @ x: (modes, N) @ (B, N, width) -> (B, modes, width)
+        x_hat = torch.einsum("kn,bnc->bkc", U_k.T, x)  # (B, modes, width)
 
         # Spectral mixing
-        x_hat_mix = torch.einsum("bmc,mcw->bmw", x_hat_low, self.weight)
-
-        # Pad back to full spectral size
-        x_hat_new = torch.zeros_like(x_hat)
-        x_hat_new[:, : self.modes, :] = x_hat_mix
+        x_hat_mix = torch.einsum("bkc,kcw->bkw", x_hat, self.weight)
 
         # Inverse Graph Fourier Transform
-        x_out = torch.matmul(self.U, x_hat_new)  # (B, N, C)
+        # U_k @ x_hat_mix: (N, modes) @ (B, modes, width) -> (B, N, width)
+        x_out = torch.einsum("nk,bkc->bnc", U_k, x_hat_mix)  # (B, N, width)
 
         # Skip connection + spectral output + feedforward
         x_out = x + x_out + self.ff(x)

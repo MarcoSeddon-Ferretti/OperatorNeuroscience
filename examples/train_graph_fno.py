@@ -25,16 +25,16 @@ LOAD_DATA = True
 DATA_PATH = "datasets/steady_ring_dataset_with_basis.pt"
 
 # Model architecture
-WIDTH = 16
+WIDTH = 32
 DEPTH = 8
-MODES = 16
+MODES = 24
 
 # Training hyperparameters
-EPOCHS = 5
-LR = 1e-6
+EPOCHS = 50
+LR = 1e-5
 BATCH_SIZE = 64
 
-TRAIN = True
+TRAIN = False
 MODEL_PATH = "checkpoints/gfno_ring.pt"
 
 
@@ -55,7 +55,7 @@ def main():
             print(f"Data not found at {DATA_PATH}, generating...")
             data = generate_steady_state_dataset(
                 N=200,
-                n_samples=5000,
+                n_samples=10000,
                 frac_inhib=0.2,
                 scale=0.8,
                 input_scale=1.0,
@@ -67,19 +67,19 @@ def main():
     else:
         data = generate_steady_state_dataset(
             N=200,
-            n_samples=5000,
+            n_samples=10000,
             frac_inhib=0.2,
             scale=0.8,
             input_scale=1.0,
         )
 
-    # Extract data
-    u0 = data["inputs_spec"].to(device)  # Spectral domain inputs
-    u_inf = data["outputs_spec"].to(device)  # Spectral domain outputs
+    # Extract data (node space)
+    u0 = data["inputs_node"].to(device)  # Node-space inputs
+    u_inf = data["outputs_node"].to(device)  # Node-space outputs
     U = data["evecs"].to(device)  # Laplacian eigenvectors
 
     # Train/test split
-    tr_len = 4000
+    tr_len = int(0.8 * len(u0))
     train_u0, test_u0 = u0[:tr_len], u0[tr_len:]
     train_u_inf, test_u_inf = u_inf[:tr_len], u_inf[tr_len:]
 
@@ -122,15 +122,38 @@ def main():
     print(f"Test MSE loss: {loss.item():.4e}")
 
     # Visualization: sample predictions
-    fig, axs = plt.subplots(2, 2, figsize=(12, 6))
-    for b, ax in enumerate(axs.flatten()):
-        ax.plot(test_u0[b].cpu(), label="Input u0", linewidth=2)
-        ax.plot(test_u_inf[b].cpu(), label="True u∞")
-        ax.plot(pred[b].cpu(), label="Pred u∞", linestyle="--")
-        ax.set_title(f"Sample {b}")
-        ax.legend()
+    n_samples = 4
+    fig, axs = plt.subplots(3, n_samples, figsize=(14, 8))
+
+    for b in range(n_samples):
+        input_np = test_u0[b].cpu().numpy()
+        true_np = test_u_inf[b].cpu().numpy()
+        pred_np = pred[b].cpu().numpy()
+        error_np = pred_np - true_np
+
+        # Row 1: Input
+        axs[0, b].plot(input_np, color="steelblue", linewidth=1.5)
+        axs[0, b].set_title(f"Sample {b}" if b == 0 else f"{b}")
+        axs[0, b].set_ylabel("Input u₀" if b == 0 else "")
+        axs[0, b].set_xticks([])
+
+        # Row 2: True vs Predicted
+        axs[1, b].plot(true_np, color="black", linewidth=1.5, label="True u∞")
+        axs[1, b].plot(pred_np, color="tab:orange", linewidth=1.5, linestyle="--", label="Pred u∞")
+        axs[1, b].set_ylabel("Output u∞" if b == 0 else "")
+        axs[1, b].set_xticks([])
+        if b == n_samples - 1:
+            axs[1, b].legend(loc="upper right", fontsize=8)
+
+        # Row 3: Error
+        axs[2, b].fill_between(range(len(error_np)), error_np, 0,
+                               color="tab:red", alpha=0.4)
+        axs[2, b].axhline(0, color="black", linewidth=0.5)
+        axs[2, b].set_ylabel("Error" if b == 0 else "")
+        axs[2, b].set_xlabel("Node index")
+
     plt.tight_layout()
-    plt.savefig("graph_fno_samples.png")
+    plt.savefig("graph_fno_samples.png", dpi=150)
     plt.show()
 
     # Correlation analysis

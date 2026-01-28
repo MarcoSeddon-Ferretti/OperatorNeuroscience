@@ -219,7 +219,7 @@ def generate_dataset(
     outputs = torch.stack(outputs)  # (B, N)
 
     # Compute Laplacian eigenbasis
-    L, evals, evecs = laplacian_basis(W)
+    L, evals, evecs = laplacian_basis(W) #Graph Fourier Transform
 
     # Project into spectral domain
     inputs_spec = inputs @ evecs  # (B, N)
